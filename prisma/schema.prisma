@@ -30,6 +30,7 @@ model Category {
   name      String
   slug      String    @unique
   priority  Int       @default(0)
+  isVisible Boolean   @default(true)
   products  Product[]
   coupons   Coupon[]
   createdAt DateTime  @default(now())

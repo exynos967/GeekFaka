@@ -29,12 +29,13 @@ export async function POST(req: Request) {
   if (!await isAuthenticated()) return new NextResponse("Unauthorized", { status: 401 });
 
   try {
-    const { name, slug, priority = 0 } = await req.json();
+    const { name, slug, priority = 0, isVisible = true } = await req.json();
     const category = await prisma.category.create({
       data: { 
         name, 
         slug, 
-        priority: Number(priority) 
+        priority: Number(priority),
+        isVisible: Boolean(isVisible)
       }
     });
     return NextResponse.json(category);

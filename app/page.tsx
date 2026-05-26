@@ -14,6 +14,7 @@ export default async function Home() {
 
   try {
     categoriesData = await prisma.category.findMany({
+      where: { isVisible: true },
       orderBy: { priority: "desc" },
       include: {
         products: {

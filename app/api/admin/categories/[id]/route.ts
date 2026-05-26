@@ -10,15 +10,16 @@ export async function PATCH(
   if (!await isAuthenticated()) return new NextResponse("Unauthorized", { status: 401 });
 
   try {
-    const { name, slug, priority } = await req.json();
+    const { name, slug, priority, isVisible } = await req.json();
     const { id } = params;
 
     const category = await prisma.category.update({
       where: { id },
       data: {
-        name,
-        slug,
-        priority: Number(priority), // Ensure it's a number
+        ...(name !== undefined ? { name } : {}),
+        ...(slug !== undefined ? { slug } : {}),
+        ...(priority !== undefined ? { priority: Number(priority) } : {}),
+        ...(isVisible !== undefined ? { isVisible: Boolean(isVisible) } : {}),
       }
     });
 

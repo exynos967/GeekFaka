@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Plus, Edit2, Trash2, Loader2, ArrowUp, Copy, Check, ChevronLeft, ChevronRight } from "lucide-react"
+import { Plus, Edit2, Trash2, Loader2, ArrowUp, Copy, Check, ChevronLeft, ChevronRight, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -14,6 +14,7 @@ interface Category {
   name: string
   slug: string
   priority: number
+  isVisible: boolean
   _count?: {
     products: number
   }
@@ -142,6 +143,25 @@ export default function CategoriesPage() {
     }
   }
 
+  const handleToggleVisible = async (id: string, current: boolean) => {
+    try {
+      const res = await fetch(`/api/admin/categories/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isVisible: !current }),
+        headers: { "Content-Type": "application/json" }
+      })
+
+      if (res.ok) {
+        setCategories(categories.map(c => c.id === id ? { ...c, isVisible: !current } : c))
+      } else {
+        const data = await res.json()
+        alert(data.error || "操作失败")
+      }
+    } catch (error) {
+      console.error(error)
+    }
+  }
+
   return (
     <div className="space-y-6 h-full flex flex-col">
       <div className="flex justify-between items-center shrink-0">
@@ -183,7 +203,14 @@ export default function CategoriesPage() {
                   <TableRow key={category.id} className="hover:bg-muted/30">
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="font-bold text-lg">{category.name}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-lg">{category.name}</span>
+                          {!category.isVisible && (
+                            <span className="rounded border border-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                              已隐藏
+                            </span>
+                          )}
+                        </div>
                         <CopyId id={category.id} />
                       </div>
                     </TableCell>
@@ -198,6 +225,24 @@ export default function CategoriesPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
+                         <Button
+                           variant="outline"
+                           size="sm"
+                           className={cn(
+                             "h-8 px-2",
+                             category.isVisible
+                               ? "border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                               : "border-green-500/30 text-green-500 hover:bg-green-500/10"
+                           )}
+                           onClick={() => handleToggleVisible(category.id, category.isVisible)}
+                         >
+                           {category.isVisible ? (
+                             <EyeOff className="h-3.5 w-3.5 mr-1" />
+                           ) : (
+                             <Eye className="h-3.5 w-3.5 mr-1" />
+                           )}
+                           {category.isVisible ? "隐藏" : "显示"}
+                         </Button>
                          <Button 
                            variant="secondary" 
                            size="sm" 
@@ -306,5 +351,4 @@ export default function CategoriesPage() {
     </div>
   )
 }
-
 
