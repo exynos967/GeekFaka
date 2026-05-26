@@ -45,15 +45,32 @@ export async function DELETE(
 
   try {
     const { id } = params;
-    
-    await prisma.product.delete({
-      where: { id }
+
+    const orderCount = await prisma.order.count({
+      where: { productId: id }
     });
+
+    if (orderCount > 0) {
+      return NextResponse.json({ error: "该商品已有订单记录，无法直接删除，请改为下架以保留订单和卡密记录。" }, { status: 400 });
+    }
+
+    await prisma.$transaction([
+      prisma.license.deleteMany({
+        where: { productId: id }
+      }),
+      prisma.coupon.updateMany({
+        where: { productId: id },
+        data: { productId: null }
+      }),
+      prisma.product.delete({
+        where: { id }
+      })
+    ]);
     
     log.info({ productId: id }, "Product deleted");
     return NextResponse.json({ success: true });
   } catch (error) {
     log.error({ err: error, productId: params.id }, "Failed to delete product");
-    return NextResponse.json({ error: "Failed to delete product. Make sure to delete licenses first." }, { status: 500 });
+    return NextResponse.json({ error: "删除商品失败" }, { status: 500 });
   }
 }

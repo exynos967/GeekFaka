@@ -414,7 +414,7 @@ export function StoreFront({ categories }: { categories: Category[] }) {
                   </RadioGroup>
                 ) : (
                   <div className="p-3 border rounded bg-background text-muted-foreground text-xs text-center">
-                    {finalTotal <= 0 ? "优惠码已抵扣，可直接完成订单" : "当前可使用优惠码抵扣至 0 元后完成订单"}
+                    {finalTotal <= 0 ? "优惠码已抵扣，可直接完成订单" : "当前可使用优惠码完成订单"}
                   </div>
                 )}
               </div>

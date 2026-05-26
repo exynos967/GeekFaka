@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import { Plus, Edit2, Trash2, Loader2, Key, ChevronLeft, ChevronRight, Filter } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -155,7 +154,7 @@ export default function ProductsPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm("确定要删除此商品吗？如果有关联的卡密可能会失败。")) return
+    if (!confirm("确定要删除此商品吗？未售出的卡密会一并删除；已有订单的商品请改为下架。")) return
     
     try {
       const res = await fetch(`/api/admin/products/${id}`, { method: "DELETE" })
@@ -268,10 +267,19 @@ export default function ProductsPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Switch 
-                        checked={product.isActive} 
-                        onCheckedChange={() => handleToggleActive(product.id, product.isActive)}
-                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={cn(
+                          "h-8 px-3",
+                          product.isActive
+                            ? "border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10"
+                            : "border-green-500/30 text-green-500 hover:bg-green-500/10"
+                        )}
+                        onClick={() => handleToggleActive(product.id, product.isActive)}
+                      >
+                        {product.isActive ? "下架" : "上架"}
+                      </Button>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">

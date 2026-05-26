@@ -3,7 +3,7 @@ version: '3'
 services:
   geekfaka:
     container_name: geekfaka-app
-    image: huangzijian888/geekfaka:latest
+    image: ghcr.io/exynos967/geekfaka:latest
     restart: always
     ports:
       - "3000:3000"
@@ -16,6 +16,8 @@ services:
       - COUPON_API_KEY=geekfaka_default_secret_key # 批量创建优惠码的 API KEY
     depends_on:
       - mysql
+    volumes:
+      - geekfaka_uploads:/app/public/uploads
 
   mysql:
     image: mysql:8.0
@@ -31,3 +33,6 @@ services:
     volumes:
       - ./mysql_data:/var/lib/mysql
     command: --default-authentication-plugin=mysql_native_password
+
+volumes:
+  geekfaka_uploads:

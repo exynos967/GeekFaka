@@ -72,16 +72,6 @@ export default async function Home() {
         <StoreFront categories={categories} />
       </section>
       
-      {/* Info Section */}
-      <section className="py-12 text-center bg-muted/20">
-        <div className="container px-4">
-           <p className="mx-auto max-w-xl text-lg text-muted-foreground leading-relaxed">
-            GeekFaka 提供安全、极速的虚拟商品交易体验。<br/>
-            7x24小时无人值守，支付即刻发货。
-          </p>
-        </div>
-      </section>
-
       {/* Footer */}
       <footer className="border-t py-12 text-center text-sm text-muted-foreground bg-muted/10">
         <div className="container mx-auto max-w-6xl px-4 space-y-8">

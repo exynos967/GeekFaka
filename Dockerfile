@@ -40,7 +40,7 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 # Copy necessary files
-COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
@@ -51,6 +51,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/docker-entrypoint.sh ./
 
 # Allow entrypoint to write/modify prisma schema
 RUN chmod -R 755 prisma
+RUN mkdir -p public/uploads && chown -R nextjs:nodejs public
 RUN chmod +x docker-entrypoint.sh
 
 USER nextjs
