@@ -20,14 +20,19 @@ interface RichTextEditorProps {
   className?: string
 }
 
-function insertTextAtCursor(textarea: HTMLTextAreaElement, text: string) {
+function insertTextAtCursor(textarea: HTMLTextAreaElement, text: string, onChange: (value: string) => void) {
   const start = textarea.selectionStart
   const end = textarea.selectionEnd
   const nextValue = textarea.value.slice(0, start) + text + textarea.value.slice(end)
+  const nextPosition = start + text.length
 
   textarea.value = nextValue
-  textarea.setSelectionRange(start + text.length, start + text.length)
-  textarea.dispatchEvent(new Event("input", { bubbles: true }))
+  onChange(nextValue)
+
+  requestAnimationFrame(() => {
+    textarea.focus()
+    textarea.setSelectionRange(nextPosition, nextPosition)
+  })
 }
 
 function getImageMarkdown(file: File, url: string) {
@@ -63,12 +68,13 @@ export function RichTextEditor({ value, onChange, className }: RichTextEditorPro
 
   const insertMarkdown = useCallback((markdown: string, target?: TextAreaTextApi | HTMLTextAreaElement | null) => {
     if (target instanceof HTMLTextAreaElement) {
-      insertTextAtCursor(target, markdown)
+      insertTextAtCursor(target, markdown, onChange)
       return
     }
 
     if (target) {
-      target.replaceSelection(markdown)
+      const nextState = target.replaceSelection(markdown)
+      onChange(nextState.text)
       return
     }
 
@@ -96,11 +102,20 @@ export function RichTextEditor({ value, onChange, className }: RichTextEditorPro
       disabled: uploading,
     },
     icon: (
-      <svg width="13" height="13" viewBox="0 0 20 20" aria-hidden="true">
-        <path
-          fill="currentColor"
-          d="M10 2a1 1 0 0 1 1 1v6.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 0 1 1.4-1.42L9 9.59V3a1 1 0 0 1 1-1ZM4 14a1 1 0 0 1 1 1v1h10v-1a1 1 0 1 1 2 0v2a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1Z"
-        />
+      <svg
+        width="13"
+        height="13"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M16 16l-4-4-4 4" />
+        <path d="M12 12v9" />
+        <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3" />
       </svg>
     ),
     execute: (_state, api) => {
