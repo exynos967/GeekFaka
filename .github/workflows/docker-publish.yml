@@ -2,17 +2,14 @@ name: Docker Build and Publish
 
 on:
   push:
-    branches: [ "main", "business" ]
-    # Support various tag patterns
-    tags: [ '*.*.*', 'v*.*.*', '*-business' ]
+    branches: [ "**" ]
+    tags: [ "*" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
 
 env:
-  REGISTRY: docker.io
-  # Detect image name based on the current GitHub Repository
-  DOCKER_IMAGE: ${{ github.repository == 'huangzijian888/HTStore' && 'huangzijian888/ht-store' || 'huangzijian888/GeekFaka' }}
+  REGISTRY: ghcr.io
 
 jobs:
   build:
@@ -31,22 +28,31 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      # Login to Docker Hub
-      - name: Log into Docker Hub
+      - name: Prepare image name
+        id: image
+        run: |
+          image="$(echo "${REGISTRY}/${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+
+      # Login to GitHub Container Registry
+      - name: Log into GHCR
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v2
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       # Extract metadata (tags, labels) for Docker
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: ${{ env.REGISTRY }}/${{ env.DOCKER_IMAGE }}
+          images: ${{ steps.image.outputs.image }}
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/business' }}
+            type=ref,event=branch
+            type=sha,format=short
             type=ref,event=tag
 
       # Build and push Docker image

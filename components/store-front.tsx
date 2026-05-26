@@ -73,10 +73,10 @@ export function StoreFront({ categories }: { categories: Category[] }) {
     }
   }
 
-  const productTotal = Math.max(0, subtotal - discount)
+  const productTotal = Math.max(0, Math.round((subtotal - discount) * 100) / 100)
   const feePercent = selectedChannel?.fee || 0
-  const feeAmount = productTotal * (feePercent / 100)
-  const finalTotal = productTotal + feeAmount
+  const feeAmount = Math.round(productTotal * (feePercent / 100) * 100) / 100
+  const finalTotal = Math.round((productTotal + feeAmount) * 100) / 100
 
   useEffect(() => {
     fetch("/api/config/payments")
@@ -147,8 +147,8 @@ export function StoreFront({ categories }: { categories: Category[] }) {
       return
     }
     
-    if (!paymentMethod) {
-      alert("请选择支付方式")
+    if (!paymentMethod && finalTotal > 0) {
+      alert("当前仅支持优惠码抵扣支付，请先使用优惠码将应付金额抵扣为 0 元")
       return
     }
 
@@ -158,7 +158,7 @@ export function StoreFront({ categories }: { categories: Category[] }) {
     try {
       // Find the provider for the selected channel
       const selectedChannel = channels.find(c => c.id === paymentMethod)
-      const providerName = selectedChannel?.provider || "dummy"
+      const providerName = finalTotal <= 0 ? "coupon" : selectedChannel?.provider || "epay"
 
       const payload = {
         productId: selectedProduct.id,
@@ -413,8 +413,8 @@ export function StoreFront({ categories }: { categories: Category[] }) {
                     ))}
                   </RadioGroup>
                 ) : (
-                  <div className="p-3 border border-destructive/50 rounded bg-destructive/10 text-destructive text-xs text-center">
-                    暂无可用支付方式
+                  <div className="p-3 border rounded bg-background text-muted-foreground text-xs text-center">
+                    {finalTotal <= 0 ? "优惠码已抵扣，可直接完成订单" : "当前可使用优惠码抵扣至 0 元后完成订单"}
                   </div>
                 )}
               </div>
@@ -436,7 +436,7 @@ export function StoreFront({ categories }: { categories: Category[] }) {
                 
                 <Button size="lg" className="w-full font-bold text-lg h-12 shadow-lg shadow-primary/20" onClick={handlePurchase} disabled={loading}>
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {loading ? "正在处理..." : "立即支付"}
+                  {loading ? "正在处理..." : finalTotal <= 0 ? "确认下单" : "立即支付"}
                 </Button>
               </div>
             </div>
