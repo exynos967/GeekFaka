@@ -34,7 +34,7 @@ async function processNotification(data: any, req?: Request) {
     log.info("Signature verified");
 
     if (callbackData.status === "PAID") {
-       await prisma.$transaction(async (tx) => {
+      const result = await prisma.$transaction(async (tx): Promise<"FULFILLED" | "ALREADY_PAID"> => {
         const order = await tx.order.findUnique({
           where: { orderNo: callbackData.orderNo },
           include: { product: true }
@@ -51,18 +51,7 @@ async function processNotification(data: any, req?: Request) {
         
         if (order.status === "PAID") {
             log.info("Order already paid, skipping idempotency check");
-            return; 
-        }
-
-        // Check for expiration (30 mins)
-        const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
-        if (order.createdAt < thirtyMinutesAgo) {
-          log.warn("Payment received for expired order");
-          await tx.order.update({
-            where: { id: order.id },
-            data: { status: "EXPIRED" }
-          });
-          return;
+            return "ALREADY_PAID";
         }
 
         await claimAvailableLicenses(tx, {
@@ -80,15 +69,21 @@ async function processNotification(data: any, req?: Request) {
           }
         });
         log.info("Order successfully fulfilled");
+        return "FULFILLED";
       });
 
-      // Send Email Notification
-      sendOrderEmail(callbackData.orderNo).catch(e => log.error({ err: e }, "Email background task failed"));
+      if (result === "FULFILLED") {
+        sendOrderEmail(callbackData.orderNo).catch(e =>
+          log.error({ errorType: e instanceof Error ? e.name : "UnknownError" }, "Email background task failed")
+        );
+      }
+
+      return new NextResponse("success");
     }
 
-    return new NextResponse("success");
+    return new NextResponse("fail", { status: 400 });
   } catch (error) {
-    logger.error({ err: error }, "Payment notification processing failed");
+    log.error({ errorType: error instanceof Error ? error.name : "UnknownError" }, "Payment notification processing failed");
     return new NextResponse("fail", { status: 400 });
   }
 }
