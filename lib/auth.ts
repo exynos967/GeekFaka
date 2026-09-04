@@ -56,6 +56,11 @@ export async function login(password: string) {
 
   const validPassword = dbSetting?.value || process.env.ADMIN_PASSWORD;
 
+  if (typeof validPassword !== "string" || validPassword.length === 0) {
+    log.error("Admin login failed: Admin password is not configured");
+    return false;
+  }
+
   if (password === validPassword) {
     // Generate JWT - We remove internal expiration and rely on Cookie maxAge for session management.
     // This is more robust against time synchronization issues.
