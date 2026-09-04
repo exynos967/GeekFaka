@@ -17,30 +17,44 @@ import Link from "next/link"
 
 export function OrderLookup() {
   const [open, setOpen] = useState(false)
-  const [query, setQuery] = useState("")
+  const [orderNo, setOrderNo] = useState("")
+  const [contact, setContact] = useState("")
+  const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<any[]>([])
   const [hasSearched, setHasSearched] = useState(false)
 
   const handleSearch = async (e?: React.FormEvent) => {
     e?.preventDefault()
-    if (!query.trim()) return
+    if (!orderNo.trim() || !contact.trim()) return
 
     setLoading(true)
     setHasSearched(false)
     setResults([])
+    setError("")
 
     try {
-      const res = await fetch(`/api/orders/query?q=${encodeURIComponent(query.trim())}`)
+      const res = await fetch("/api/orders/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderNo: orderNo.trim(), contact: contact.trim() })
+      })
+      if (!res.ok) {
+        setError("查询失败，请稍后重试。")
+        return
+      }
       const data = await res.json()
       
       if (Array.isArray(data)) {
+        for (const order of data) {
+          sessionStorage.setItem(`geekfaka:order-contact:${order.orderNo}`, contact.trim())
+        }
         setResults(data)
       } else {
         setResults([])
       }
-    } catch (error) {
-      console.error(error)
+    } catch {
+      setError("查询失败，请确认浏览器允许会话存储后重试。")
     } finally {
       setLoading(false)
       setHasSearched(true)
@@ -77,23 +91,35 @@ export function OrderLookup() {
         <DialogHeader>
           <DialogTitle>订单查询</DialogTitle>
           <DialogDescription>
-            输入下单时填写的联系方式（邮箱/QQ/手机号）或订单号查询。
+            输入订单号和下单时填写的联系方式（邮箱/QQ/手机号）查询。
           </DialogDescription>
         </DialogHeader>
         
-        <form onSubmit={handleSearch} className="flex gap-2 mt-2">
+        <form onSubmit={handleSearch} className="space-y-3 mt-2">
+          <label htmlFor="lookup-order-no" className="text-sm font-medium">订单号</label>
           <Input 
-            placeholder="联系方式 / 订单号" 
-            value={query} 
-            onChange={e => setQuery(e.target.value)}
+            id="lookup-order-no"
+            placeholder="订单号"
+            value={orderNo}
+            onChange={e => setOrderNo(e.target.value)}
+            required
           />
-          <Button type="submit" disabled={loading}>
+          <label htmlFor="lookup-contact" className="text-sm font-medium">下单联系方式</label>
+          <Input
+            id="lookup-contact"
+            placeholder="下单联系方式（邮箱/QQ/手机号）"
+            value={contact}
+            onChange={e => setContact(e.target.value)}
+            required
+          />
+          <Button type="submit" disabled={loading || !orderNo.trim() || !contact.trim()}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "查询"}
           </Button>
         </form>
 
         <div className="mt-4">
-          {hasSearched && results.length === 0 && (
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          {!error && hasSearched && results.length === 0 && (
             <div className="text-center py-8 text-muted-foreground border border-dashed rounded-lg">
               <p>未找到相关订单</p>
             </div>

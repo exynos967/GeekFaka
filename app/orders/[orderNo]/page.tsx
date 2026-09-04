@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
@@ -172,19 +172,48 @@ export default function OrderPage({ params }: { params: { orderNo: string } }) {
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [checking, setChecking] = useState(false)
+  const [contact, setContact] = useState("")
+  const [error, setError] = useState("")
 
-  const fetchOrder = async () => {
+  const fetchOrder = useCallback(async () => {
+    setLoading(true)
+    setOrder(null)
+    setError("")
     try {
-      const res = await fetch(`/api/orders/${orderNo}`)
+      const savedContact = sessionStorage.getItem(`geekfaka:order-contact:${orderNo}`)?.trim()
+      if (!savedContact) return
+      setContact(savedContact)
+      const res = await fetch(`/api/orders/${orderNo}`, {
+        headers: { "X-Order-Contact": savedContact }
+      })
+      if (res.status === 404) {
+        sessionStorage.removeItem(`geekfaka:order-contact:${orderNo}`)
+        setError("订单号或下单联系方式不匹配，请重新输入。")
+        return
+      }
       if (res.ok) {
         const data = await res.json()
         setOrder(data)
+      } else {
+        setError("暂时无法读取订单，请稍后重试。")
       }
-    } catch (error) {
-      console.error(error)
+    } catch {
+      setError("读取失败，请确认网络连接及浏览器会话存储可用后重试。")
     } finally {
       setLoading(false)
     }
+  }, [orderNo])
+
+  const handleContactSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!contact.trim()) return
+    try {
+      sessionStorage.setItem(`geekfaka:order-contact:${orderNo}`, contact.trim())
+    } catch {
+      setError("无法保存验证信息，请允许浏览器会话存储后重试。")
+      return
+    }
+    await fetchOrder()
   }
 
   // Effect to sync payment status if URL has payment params
@@ -209,7 +238,7 @@ export default function OrderPage({ params }: { params: { orderNo: string } }) {
     }
 
     syncPayment()
-  }, [orderNo, searchParams])
+  }, [orderNo, searchParams, fetchOrder])
 
   const handleCheckPayment = async () => {
     setChecking(true)
@@ -243,8 +272,29 @@ export default function OrderPage({ params }: { params: { orderNo: string } }) {
     return (
       <div className="min-h-screen bg-background dark text-foreground">
         <Navbar />
-        <div className="container mx-auto max-w-3xl py-20 text-center">
-          <h1 className="text-2xl font-bold">订单不存在</h1>
+        <div className="container mx-auto max-w-md py-20 px-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>验证下单联系方式</CardTitle>
+              <p className="text-sm text-muted-foreground">请输入下单时填写的联系方式，以查看订单和卡密。</p>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleContactSubmit} className="space-y-4">
+                <label htmlFor="order-contact" className="text-sm font-medium">下单联系方式</label>
+                <Input
+                  id="order-contact"
+                  placeholder="邮箱 / QQ / 手机号"
+                  value={contact}
+                  onChange={e => setContact(e.target.value)}
+                  required
+                />
+                {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+                <Button type="submit" className="w-full" disabled={!contact.trim()}>
+                  验证并查看订单
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
         </div>
       </div>
     )

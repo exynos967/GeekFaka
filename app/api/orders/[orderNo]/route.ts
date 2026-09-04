@@ -6,6 +6,11 @@ export async function GET(
   { params }: { params: { orderNo: string } }
 ) {
   const { orderNo } = params;
+  const contact = req.headers.get("X-Order-Contact");
+
+  if (!contact?.trim()) {
+    return NextResponse.json({ error: "Order not found" }, { status: 404 });
+  }
 
   try {
     const order = await prisma.order.findUnique({
@@ -20,7 +25,8 @@ export async function GET(
       }
     });
 
-    if (!order) {
+    if (!order || typeof order.email !== "string" ||
+        order.email.trim().toLowerCase() !== contact.trim().toLowerCase()) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
@@ -32,8 +38,8 @@ export async function GET(
     }
 
     return NextResponse.json(order);
-  } catch (error) {
-    console.error("Fetch order error:", error);
+  } catch {
+    console.error("Fetch order error");
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

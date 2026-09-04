@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getPaymentAdapter } from "@/lib/payments/registry";
@@ -83,8 +84,7 @@ export async function POST(req: Request) {
     const totalAmount = Math.max(0, Math.round(((price * orderQuantity) - discountAmount) * 100) / 100);
 
     // 4. Create Order
-    // Generate a simple order number
-    const orderNo = `HT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const orderNo = `HT-${randomUUID()}`;
 
     if (totalAmount === 0) {
       await prisma.$transaction(async (tx) => {

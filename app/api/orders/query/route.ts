@@ -3,22 +3,26 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const q = searchParams.get("q");
+export async function POST(req: Request) {
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "请输入订单号和下单联系方式" }, { status: 400 });
+  }
+  const { orderNo, contact } = body ?? {};
 
-  if (!q || q.trim().length === 0) {
-    return NextResponse.json({ error: "请输入查询关键词" }, { status: 400 });
+  if (typeof orderNo !== "string" || !orderNo.trim() ||
+      typeof contact !== "string" || !contact.trim()) {
+    return NextResponse.json({ error: "请输入订单号和下单联系方式" }, { status: 400 });
   }
 
-  const keyword = q.trim();
-
   try {
-    // 1. Try to find by Order No (Exact match)
     const orderByNo = await prisma.order.findUnique({
-      where: { orderNo: keyword },
+      where: { orderNo: orderNo.trim() },
       select: {
         orderNo: true,
+        email: true,
         status: true,
         totalAmount: true,
         createdAt: true,
@@ -26,27 +30,20 @@ export async function GET(req: Request) {
       }
     });
 
-    if (orderByNo) {
-      return NextResponse.json([orderByNo]);
+    if (!orderByNo || typeof orderByNo.email !== "string" ||
+        orderByNo.email.trim().toLowerCase() !== contact.trim().toLowerCase()) {
+      return NextResponse.json([]);
     }
 
-    // 2. Try to find by Email/Contact (Exact match)
-    const ordersByEmail = await prisma.order.findMany({
-      where: { email: keyword },
-      orderBy: { createdAt: 'desc' },
-      take: 20, // Limit to recent 20 orders
-      select: {
-        orderNo: true,
-        status: true,
-        totalAmount: true,
-        createdAt: true,
-        product: { select: { name: true } }
-      }
-    });
-
-    return NextResponse.json(ordersByEmail);
-  } catch (error) {
-    console.error("Order query error:", error);
+    return NextResponse.json([{
+      orderNo: orderByNo.orderNo,
+      status: orderByNo.status,
+      totalAmount: orderByNo.totalAmount,
+      createdAt: orderByNo.createdAt,
+      product: orderByNo.product
+    }]);
+  } catch {
+    console.error("Order query error");
     return NextResponse.json({ error: "系统错误" }, { status: 500 });
   }
 }
