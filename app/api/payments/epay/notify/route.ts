@@ -22,7 +22,7 @@ export async function POST(req: Request) {
 
 async function processNotification(data: any, req?: Request) {
   const log = logger.child({ module: 'EPayNotify', orderNo: data.out_trade_no });
-  log.info({ data }, "Received payment callback");
+  log.info("Received payment callback");
 
   try {
     const adapter = getPaymentAdapter("epay");
@@ -30,7 +30,7 @@ async function processNotification(data: any, req?: Request) {
     const headers = req ? Object.fromEntries(req.headers.entries()) : {};
     const callbackData = await adapter.verifyCallback(data, headers);
     
-    log.info({ callbackData }, "Signature verified");
+    log.info("Signature verified");
 
     if (callbackData.status === "PAID") {
        await prisma.$transaction(async (tx) => {

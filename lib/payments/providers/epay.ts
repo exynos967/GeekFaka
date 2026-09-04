@@ -173,7 +173,7 @@ export class EpayProvider implements PaymentAdapter {
 
     const incomingSignType = (sign_type || this.signType).toUpperCase();
 
-    log.info({ incomingSignType, sign }, "Verifying callback signature");
+    log.info({ incomingSignType }, "Verifying callback signature");
 
     if (incomingSignType === "RSA") {
        if (!this.publicKey) throw new Error("RSA Public Key missing in settings");
@@ -188,7 +188,7 @@ export class EpayProvider implements PaymentAdapter {
        if (!this.key) throw new Error("MD5 Key missing in settings");
        const calculatedSign = this.signMD5(params as Record<string, string>);
        if (calculatedSign !== sign) {
-         log.error({ calculated: calculatedSign, received: sign }, "MD5 Signature verification failed");
+         log.error("MD5 Signature verification failed");
          throw new Error("Invalid MD5 signature from callback");
        }
     }
