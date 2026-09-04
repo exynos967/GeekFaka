@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { claimAvailableLicenses } from "@/lib/fulfillment";
 import { getPaymentAdapter } from "@/lib/payments/registry";
 import { logger } from "@/lib/logger";
 import { sendOrderEmail } from "@/lib/mail";
@@ -109,22 +110,10 @@ export async function POST(req: Request) {
           }
         });
 
-        const licenses = await tx.license.findMany({
-          where: {
-            productId,
-            status: "AVAILABLE"
-          },
-          orderBy: { createdAt: "asc" },
-          take: orderQuantity
-        });
-
-        if (licenses.length < orderQuantity) {
-          throw new Error("Insufficient stock");
-        }
-
-        await tx.license.updateMany({
-          where: { id: { in: licenses.map((license) => license.id) } },
-          data: { status: "SOLD", orderId: order.id }
+        await claimAvailableLicenses(tx, {
+          productId,
+          orderId: order.id,
+          quantity: orderQuantity
         });
       });
 

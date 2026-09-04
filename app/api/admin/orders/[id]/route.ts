@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { claimAvailableLicenses } from "@/lib/fulfillment";
 import { isAuthenticated } from "@/lib/auth";
 import { sendOrderEmail } from "@/lib/mail";
 
@@ -25,22 +26,10 @@ export async function PATCH(
 
        // Transactional manual fulfillment
        await prisma.$transaction(async (tx) => {
-         
-         // Standard Stock Logic
-         const licenses = await tx.license.findMany({
-           where: { productId: order.productId, status: "AVAILABLE" },
-           orderBy: { createdAt: 'asc' }, // FIFO: Use oldest licenses first
-           take: order.quantity
-         });
-
-         if (licenses.length < order.quantity) {
-           throw new Error("Insufficient stock to fulfill manually");
-         }
-
-         const licenseIds = licenses.map(l => l.id);
-         await tx.license.updateMany({
-           where: { id: { in: licenseIds } },
-           data: { status: "SOLD", orderId: order.id }
+         await claimAvailableLicenses(tx, {
+           productId: order.productId,
+           orderId: order.id,
+           quantity: order.quantity
          });
 
          // Update Order

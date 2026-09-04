@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { claimAvailableLicenses } from "@/lib/fulfillment";
 import { getPaymentAdapter } from "@/lib/payments/registry";
 import { logger } from "@/lib/logger";
 import { sendOrderEmail } from "@/lib/mail";
@@ -64,29 +65,10 @@ async function processNotification(data: any, req?: Request) {
           return;
         }
 
-        // --- Standard License Logic ---
-        const licenses = await tx.license.findMany({
-          where: { 
-            productId: order.productId,
-            status: "AVAILABLE"
-          },
-          orderBy: { createdAt: 'asc' }, // FIFO: Use oldest licenses first
-          take: order.quantity
-        });
-
-        if (licenses.length < order.quantity) {
-          log.error({
-            needed: order.quantity,
-            found: licenses.length
-          }, "Insufficient stock for paid order");
-          // Important: in real world might need to alert admin or refund
-          return; 
-        }
-
-        const licenseIds = licenses.map(l => l.id);
-        await tx.license.updateMany({
-          where: { id: { in: licenseIds } },
-          data: { status: "SOLD", orderId: order.id }
+        await claimAvailableLicenses(tx, {
+          productId: order.productId,
+          orderId: order.id,
+          quantity: order.quantity
         });
 
         await tx.order.update({
