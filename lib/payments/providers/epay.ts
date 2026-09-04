@@ -195,10 +195,27 @@ export class EpayProvider implements PaymentAdapter {
     
     log.info("Signature verified successfully");
 
+    if (typeof params.pid !== "string" || params.pid.length === 0 || params.pid !== this.pid) {
+      throw new Error("Invalid payment callback");
+    }
+
+    if (
+      typeof params.money !== "string" ||
+      params.money.trim() !== params.money ||
+      !/^[0-9]+(?:\.[0-9]{1,2})?$/.test(params.money)
+    ) {
+      throw new Error("Invalid payment callback");
+    }
+
+    const [integerPart, fractionPart = ""] = params.money.split(".");
+    const amount = `${integerPart.replace(/^0+(?=[0-9])/, "")}.${fractionPart.padEnd(2, "0")}`;
+
     const status = params.trade_status === "TRADE_SUCCESS" ? PaymentStatus.PAID : PaymentStatus.FAILED;
 
     return {
       orderNo: params.out_trade_no,
+      amount,
+      merchantId: params.pid,
       status: status,
       transactionId: params.trade_no,
       raw: data

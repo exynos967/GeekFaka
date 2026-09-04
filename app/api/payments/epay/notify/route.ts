@@ -43,6 +43,10 @@ async function processNotification(data: any, req?: Request) {
             log.error("Order not found");
             throw new Error("Order not found");
         }
+
+        if (order.totalAmount.toFixed(2) !== callbackData.amount) {
+          throw new Error("Amount mismatch");
+        }
         
         if (order.status === "PAID") {
             log.info("Order already paid, skipping idempotency check");

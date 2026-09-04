@@ -16,6 +16,8 @@ export interface PaymentIntent {
 
 export interface PaymentCallbackData {
   orderNo: string;
+  amount: string;
+  merchantId: string;
   status: PaymentStatus;
   transactionId?: string;
   raw: any; // Raw payload for debugging
