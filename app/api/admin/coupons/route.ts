@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAuthenticated } from "@/lib/auth";
+import { validateDiscount } from "@/lib/pricing";
 
 export async function GET(req: Request) {
   if (!await isAuthenticated()) return new NextResponse("Unauthorized", { status: 401 });
@@ -36,15 +37,16 @@ export async function POST(req: Request) {
   try {
     const { code, discountValue, discountType, productId, categoryId } = await req.json();
 
-    if (!code || !discountValue) {
+    if (typeof code !== "string" || !code.trim()) {
       return NextResponse.json({ error: "Missing fields" }, { status: 400 });
     }
 
+    const discount = validateDiscount(discountType || "FIXED", discountValue);
     const coupon = await prisma.coupon.create({
       data: {
         code: code.trim().toUpperCase(),
-        discountValue: parseFloat(discountValue),
-        discountType: discountType || "FIXED",
+        discountValue: discount.discountValue,
+        discountType: discount.discountType,
         productId: productId || null,
         categoryId: categoryId || null,
         isUsed: false
@@ -53,6 +55,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json(coupon);
   } catch (error: any) {
+    if (error instanceof RangeError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     if (error.code === 'P2002') {
       return NextResponse.json({ error: "Coupon code already exists" }, { status: 400 });
     }

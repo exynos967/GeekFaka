@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { randomInt } from "node:crypto";
 import { getConfiguredSecret, secretsEqual } from "@/lib/secrets";
+import { validateDiscount } from "@/lib/pricing";
 
 export async function POST(req: Request) {
   const apiKey = req.headers.get("X-API-KEY");
@@ -25,34 +27,36 @@ export async function POST(req: Request) {
       length = 8 
     } = body;
 
-    if (discountValue === undefined) {
-      return NextResponse.json({ error: "discountValue is required" }, { status: 400 });
-    }
-
-    if (count > 500) {
-      return NextResponse.json({ error: "Maximum 500 coupons per request" }, { status: 400 });
+    const discount = validateDiscount(discountType, discountValue);
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    if (!Number.isInteger(count) || count < 1 || count > 500 ||
+        !Number.isInteger(length) || length < 1 || length > 64 ||
+        count > Math.pow(chars.length, length) ||
+        typeof prefix !== "string" || prefix.length > 64 || /\s/.test(prefix) ||
+        (productId !== null && typeof productId !== "string") ||
+        (categoryId !== null && typeof categoryId !== "string")) {
+      return NextResponse.json({ error: "Invalid coupon count, length, prefix or scope" }, { status: 400 });
     }
 
     const generateCode = () => {
-      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
       let code = "";
       for (let i = 0; i < length; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
+        code += chars.charAt(randomInt(chars.length));
       }
-      return prefix ? `${prefix}-${code}` : code;
+      return prefix ? `${prefix.toUpperCase()}-${code}` : code;
     };
 
     const couponsData = [];
     const generatedCodes = new Set<string>();
 
-    while (couponsData.length < count) {
+    for (let attempt = 0; couponsData.length < count && attempt < count * 50; attempt++) {
       const code = generateCode();
       if (!generatedCodes.has(code)) {
         generatedCodes.add(code);
         couponsData.push({
           code,
-          discountType,
-          discountValue: parseFloat(discountValue),
+          discountType: discount.discountType,
+          discountValue: discount.discountValue,
           productId,
           categoryId,
           isUsed: false
@@ -60,13 +64,11 @@ export async function POST(req: Request) {
       }
     }
 
-    // Use createMany for performance. 
-    // Note: If some codes already exist in DB, this might fail depending on DB settings.
-    // In many DBs, createMany skips duplicates if properly configured, but Prisma's behavior varies.
-    // For simplicity, we assume codes are unique enough or user handles retries.
+    if (couponsData.length !== count) {
+      return NextResponse.json({ error: "Unable to generate enough unique codes; increase length" }, { status: 409 });
+    }
     const result = await prisma.coupon.createMany({
       data: couponsData,
-      // skipDuplicates: true // Not supported in SQLite
     });
 
     return NextResponse.json({ 
@@ -77,6 +79,12 @@ export async function POST(req: Request) {
     });
 
   } catch (error) {
+    if (error instanceof RangeError || error instanceof SyntaxError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
+      return NextResponse.json({ error: "Coupon code collision; retry with a longer code" }, { status: 409 });
+    }
     console.error("Bulk coupon creation error:", error);
     return NextResponse.json({ error: "Failed to create coupons" }, { status: 500 });
   }
