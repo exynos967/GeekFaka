@@ -36,6 +36,7 @@ export async function GET(req: Request) {
   await prisma.order.updateMany({
     where: {
       status: "PENDING",
+      couponId: null,
       createdAt: { lt: thirtyMinutesAgo }
     },
     data: { status: "EXPIRED" }

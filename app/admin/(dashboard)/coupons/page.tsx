@@ -32,7 +32,7 @@ interface Coupon {
   category?: { name: string }
   createdAt: string
   usedAt: string | null
-  order?: { orderNo: string }
+  order?: { orderNo: string, status: string }
 }
 
 export default function CouponsPage() {
@@ -241,7 +241,9 @@ export default function CouponsPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      {coupon.isUsed ? (
+                      {coupon.order && ["PENDING", "EXPIRED"].includes(coupon.order.status) ? (
+                        <Badge variant="outline">预留中 ({coupon.order.orderNo})</Badge>
+                      ) : coupon.isUsed ? (
                         <Badge variant="secondary" className="bg-zinc-800 text-zinc-500 border-zinc-700">
                           已使用 ({coupon.order?.orderNo})
                         </Badge>
@@ -253,10 +255,10 @@ export default function CouponsPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => { setEditingCoupon(coupon); setIsOpen(true); }}>
+                        <Button variant="ghost" size="icon" disabled={!!coupon.order} onClick={() => { setEditingCoupon(coupon); setIsOpen(true); }}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDelete(coupon.id)}>
+                        <Button variant="ghost" size="icon" disabled={!!coupon.order} className="text-destructive hover:text-destructive" onClick={() => handleDelete(coupon.id)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>

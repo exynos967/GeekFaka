@@ -56,7 +56,8 @@ export function StoreFront({ categories }: { categories: Category[] }) {
   const [appliedCoupon, setAppliedCoupon] = useState<{ 
     code: string, 
     discountType: "FIXED" | "PERCENTAGE", 
-    discountValue: number 
+    discountValue: number,
+    reserved?: boolean
   } | null>(null)
   const [couponError, setCouponError] = useState("")
 
@@ -77,6 +78,7 @@ export function StoreFront({ categories }: { categories: Category[] }) {
     fetch("/api/config/payments")
       .then(res => res.json())
       .then(data => {
+        if (!Array.isArray(data)) throw new Error("Invalid payment channels")
         setChannels(data)
         if (data.length > 0) setPaymentMethod(data[0].id)
       })
@@ -107,7 +109,7 @@ export function StoreFront({ categories }: { categories: Category[] }) {
       const res = await fetch("/api/coupons/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: couponCode, productId: selectedProduct?.id })
+        body: JSON.stringify({ code: couponCode, productId: selectedProduct?.id, email })
       })
       const data = await res.json()
       
@@ -115,7 +117,8 @@ export function StoreFront({ categories }: { categories: Category[] }) {
         setAppliedCoupon({ 
           code: data.code, 
           discountType: data.discountType, 
-          discountValue: Number(data.discountValue) 
+          discountValue: Number(data.discountValue),
+          reserved: data.reserved === true
         })
       } else {
         setCouponError(data.error || "无效的优惠码")
@@ -142,7 +145,7 @@ export function StoreFront({ categories }: { categories: Category[] }) {
       return
     }
     
-    if (!paymentMethod && finalTotal > 0) {
+    if (!paymentMethod && finalTotal > 0 && !appliedCoupon?.reserved) {
       alert("当前仅支持优惠码抵扣支付，请先使用优惠码将应付金额抵扣为 0 元")
       return
     }
@@ -180,6 +183,12 @@ export function StoreFront({ categories }: { categories: Category[] }) {
       }
 
       if (data.payUrl) {
+        try {
+          sessionStorage.setItem(`geekfaka:order-contact:${data.orderNo}`, email.trim())
+          if (paymentMethod) sessionStorage.setItem(`geekfaka:order-channel:${data.orderNo}`, paymentMethod)
+        } catch {
+          console.warn("Unable to save order contact; verification will be required on the order page")
+        }
         window.location.href = data.payUrl
       }
 
@@ -373,7 +382,7 @@ export function StoreFront({ categories }: { categories: Category[] }) {
                     )}
                   </div>
                   {couponError && <p className="text-[10px] text-destructive ml-1">{couponError}</p>}
-                  {appliedCoupon && <p className="text-[10px] text-green-600 ml-1 font-medium flex items-center gap-1"><Ticket className="h-3 w-3" /> 已减免 ¥{discount.toFixed(2)}</p>}
+                  {appliedCoupon && <p className="text-[10px] text-green-600 ml-1 font-medium flex items-center gap-1"><Ticket className="h-3 w-3" /> {appliedCoupon.reserved ? "已为原订单预留，确认后继续支付原订单" : `已减免 ¥${discount.toFixed(2)}`}</p>}
                 </div>
               </div>
 
@@ -432,7 +441,7 @@ export function StoreFront({ categories }: { categories: Category[] }) {
                 {priceError && <p role="alert" className="text-sm text-destructive">{priceError}</p>}
                 <Button size="lg" className="w-full font-bold text-lg h-12 shadow-lg shadow-primary/20" onClick={handlePurchase} disabled={loading || !!priceError}>
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {loading ? "正在处理..." : finalTotal <= 0 ? "确认下单" : "立即支付"}
+                  {loading ? "正在处理..." : appliedCoupon?.reserved ? "继续支付原订单" : finalTotal <= 0 ? "确认下单" : "立即支付"}
                 </Button>
               </div>
             </div>

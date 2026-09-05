@@ -17,7 +17,7 @@ export async function GET(req: Request) {
       take: limit,
       orderBy: { createdAt: "desc" },
       include: { 
-        order: { select: { orderNo: true } },
+        order: { select: { orderNo: true, status: true } },
         product: { select: { name: true } },
         category: { select: { name: true } }
       }

@@ -16,6 +16,7 @@ export class EpayProvider implements PaymentAdapter {
   private privateKey: string = "";
   private isEnabled: boolean = false;
   private siteUrl: string = "";
+  private channels: string[] = [];
 
   constructor() {}
 
@@ -51,6 +52,7 @@ export class EpayProvider implements PaymentAdapter {
       this.signType = (config.epay_sign_type as "MD5" | "RSA") || "MD5";
       this.publicKey = config.epay_public_key || "";
       this.privateKey = config.epay_private_key || "";
+      this.channels = (config.epay_channels || "alipay,wxpay").split(",").map(channel => channel.trim()).filter(Boolean);
       
       let url = config.site_url || process.env.NEXT_PUBLIC_URL || "http://localhost:3000";
       if (url.endsWith("/")) url = url.slice(0, -1);
@@ -129,7 +131,13 @@ export class EpayProvider implements PaymentAdapter {
       throw new Error("易支付参数未配置，请在后台设置");
     }
 
-    const type = options?.channel || "alipay"; 
+    if (this.signType === "MD5" && !this.key) {
+      throw new Error("MD5 Key is not configured");
+    }
+    const type = options?.channel || this.channels[0];
+    if (!type || !this.channels.includes(type)) {
+      throw new Error("该支付方式未开启，请重新选择");
+    }
     const notifyUrl = `${this.siteUrl}/api/payments/epay/notify`;
     const returnUrl = `${this.siteUrl}/orders/${orderNo}`;
 

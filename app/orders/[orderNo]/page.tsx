@@ -17,6 +17,8 @@ interface Order {
   email: string | null
   totalAmount: any
   status: string
+  couponId: string | null
+  paymentMethod: string | null
   quantity: number
   paidAt: any
   product: {
@@ -174,10 +176,16 @@ export default function OrderPage({ params }: { params: { orderNo: string } }) {
   const [checking, setChecking] = useState(false)
   const [contact, setContact] = useState("")
   const [error, setError] = useState("")
+  const [resuming, setResuming] = useState(false)
+  const [paymentChannels, setPaymentChannels] = useState<{ id: string, name: string, provider: string }[]>([])
+  const [paymentChannel, setPaymentChannel] = useState("")
+  const [channelsLoading, setChannelsLoading] = useState(false)
   const requestVersion = useRef(0)
   const requestController = useRef<AbortController | null>(null)
   const orderStatus = order?.status
+  const orderCouponId = order?.couponId
   const orderCreatedAt = order?.createdAt
+  const orderPaymentMethod = order?.paymentMethod
 
   const fetchOrder = useCallback(async (quiet = false) => {
     const version = ++requestVersion.current
@@ -229,13 +237,42 @@ export default function OrderPage({ params }: { params: { orderNo: string } }) {
   }, [orderNo])
 
   useEffect(() => {
-    if (!orderCreatedAt || orderStatus !== "PENDING") return
+    if (!(orderStatus === "PENDING" || (orderStatus === "EXPIRED" && orderCouponId))) return
+    const controller = new AbortController()
+    setChannelsLoading(true)
+    fetch("/api/config/payments", { signal: controller.signal })
+      .then(async res => {
+        if (!res.ok) throw new Error("Payment channels unavailable")
+        const data: { id: string, name: string, provider: string }[] = await res.json()
+        if (controller.signal.aborted) return
+        if (!Array.isArray(data)) throw new Error("Invalid payment channels")
+        const channels = data.filter(channel => channel.provider === (orderPaymentMethod || "epay"))
+        setPaymentChannels(channels)
+        let saved = ""
+        try {
+          saved = sessionStorage.getItem(`geekfaka:order-channel:${orderNo}`) || ""
+        } catch {
+          console.warn("Unable to restore the previous payment channel")
+        }
+        setPaymentChannel(channels.some(channel => channel.id === saved) ? saved : channels[0]?.id || "")
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setError("支付方式读取失败，请刷新页面或稍后重试")
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setChannelsLoading(false)
+      })
+    return () => controller.abort()
+  }, [orderNo, orderStatus, orderPaymentMethod, orderCouponId])
+
+  useEffect(() => {
+    if (!orderCreatedAt || !(orderStatus === "PENDING" || (orderStatus === "EXPIRED" && orderCouponId))) return
     let stopped = false
     let timer: ReturnType<typeof setTimeout>
     const poll = async () => {
       if (stopped) return
       if (document.visibilityState !== "hidden") await fetchOrder(true)
-      if (!stopped && (new Date(orderCreatedAt).getTime() + 30 * 60 * 1000 > Date.now())) {
+      if (!stopped && (orderCouponId || new Date(orderCreatedAt).getTime() + 30 * 60 * 1000 > Date.now())) {
         timer = setTimeout(poll, 10000)
       }
     }
@@ -244,7 +281,7 @@ export default function OrderPage({ params }: { params: { orderNo: string } }) {
       stopped = true
       clearTimeout(timer)
     }
-  }, [orderStatus, orderCreatedAt, fetchOrder])
+  }, [orderStatus, orderCouponId, orderCreatedAt, fetchOrder])
 
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -294,6 +331,29 @@ export default function OrderPage({ params }: { params: { orderNo: string } }) {
     }
   }
 
+  const handleResumePayment = async () => {
+    if (!paymentChannel) return
+    setResuming(true)
+    setError("")
+    try {
+      const res = await fetch(`/api/orders/${orderNo}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Order-Contact": contact.trim() },
+        body: JSON.stringify({ channel: paymentChannel })
+      })
+      const data = await res.json()
+      if (!res.ok || typeof data.payUrl !== "string") {
+        setError(data.error || "无法继续支付，请稍后重试")
+        return
+      }
+      window.location.href = data.payUrl
+    } catch {
+      setError("无法连接支付服务，请稍后重试")
+    } finally {
+      setResuming(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background dark text-foreground">
@@ -337,7 +397,9 @@ export default function OrderPage({ params }: { params: { orderNo: string } }) {
     )
   }
 
-  const isExpired = order.status === "EXPIRED" || (order.status === "PENDING" && new Date(order.createdAt).getTime() + 30 * 60 * 1000 < Date.now());
+  const reservedOrder = !!order.couponId && ["PENDING", "EXPIRED"].includes(order.status)
+  const isExpired = !reservedOrder && (order.status === "EXPIRED" ||
+    (order.status === "PENDING" && new Date(order.createdAt).getTime() + 30 * 60 * 1000 < Date.now()))
 
   return (
     <div className="min-h-screen bg-background dark text-foreground pb-20">
@@ -414,12 +476,25 @@ export default function OrderPage({ params }: { params: { orderNo: string } }) {
                </div>
              )}
 
-             {order.status === "PENDING" && !isExpired && (
+             {(order.status === "PENDING" || reservedOrder) && !isExpired && (
                 <div className="text-center p-6 bg-yellow-500/5 text-yellow-600 rounded-xl border border-yellow-500/20 space-y-4">
                    <div className="space-y-2">
                      <p className="font-bold text-sm">付款完成后，请勿关闭此页面</p>
                      <p className="text-xs opacity-80">系统检测到支付成功后将自动展示卡密。</p>
+                     {reservedOrder && <p className="text-xs">优惠码已为本订单预留，可继续支付原订单。</p>}
                    </div>
+                   <label className="block text-left text-sm">
+                     支付方式
+                     <select className="mt-1 w-full rounded-md border bg-background p-2"
+                       value={paymentChannel} onChange={event => setPaymentChannel(event.target.value)}
+                       disabled={channelsLoading || resuming}>
+                       {paymentChannels.length === 0 && <option value="">{channelsLoading ? "正在读取…" : "暂无可用支付方式"}</option>}
+                       {paymentChannels.map(channel => <option key={channel.id} value={channel.id}>{channel.name}</option>)}
+                     </select>
+                   </label>
+                   <Button className="w-full" onClick={handleResumePayment} disabled={resuming || !paymentChannel || channelsLoading}>
+                     {resuming ? "正在打开支付…" : "继续支付原订单"}
+                   </Button>
                    <Button 
                      variant="outline" 
                      className="w-full border-yellow-500/50 text-yellow-600 hover:bg-yellow-500/10 hover:text-yellow-700"

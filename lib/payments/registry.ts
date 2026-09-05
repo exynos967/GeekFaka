@@ -13,7 +13,7 @@ export function registerAdapter(adapter: PaymentAdapter) {
 }
 
 export function getPaymentAdapter(name: string): PaymentAdapter {
-  const adapter = adapters[name];
+  const adapter = Object.prototype.hasOwnProperty.call(adapters, name) ? adapters[name] : undefined;
   if (!adapter) {
     throw new Error(`Payment adapter '${name}' not found.`);
   }
