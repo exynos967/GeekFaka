@@ -46,30 +46,24 @@ export async function DELETE(
   try {
     const { id } = params;
 
-    const orderCount = await prisma.order.count({
-      where: { productId: id }
+    await prisma.$transaction(async (tx) => {
+      // Serialize deletion with new purchases and foreign-key references.
+      await tx.product.update({ where: { id }, data: { isActive: false } });
+      const orderCount = await tx.order.count({ where: { productId: id } });
+      const couponCount = await tx.coupon.count({ where: { productId: id } });
+      if (orderCount > 0 || couponCount > 0) {
+        throw new RangeError("该商品有关联订单或优惠券，请改为下架，或先处理未使用的关联优惠券。");
+      }
+      await tx.license.deleteMany({ where: { productId: id } });
+      await tx.product.delete({ where: { id } });
     });
-
-    if (orderCount > 0) {
-      return NextResponse.json({ error: "该商品已有订单记录，无法直接删除，请改为下架以保留订单和卡密记录。" }, { status: 400 });
-    }
-
-    await prisma.$transaction([
-      prisma.license.deleteMany({
-        where: { productId: id }
-      }),
-      prisma.coupon.updateMany({
-        where: { productId: id },
-        data: { productId: null }
-      }),
-      prisma.product.delete({
-        where: { id }
-      })
-    ]);
     
     log.info({ productId: id }, "Product deleted");
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof RangeError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     log.error({ err: error, productId: params.id }, "Failed to delete product");
     return NextResponse.json({ error: "删除商品失败" }, { status: 500 });
   }

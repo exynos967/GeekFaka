@@ -39,18 +39,21 @@ export async function DELETE(
   try {
     const { id } = params;
     
-    // Check if products exist in this category
-    const count = await prisma.product.count({ where: { categoryId: id } });
-    if (count > 0) {
-      return NextResponse.json({ error: `无法删除：该分类下还有 ${count} 个商品` }, { status: 400 });
-    }
-
-    await prisma.category.delete({
-      where: { id }
+    await prisma.$transaction(async (tx) => {
+      await tx.category.update({ where: { id }, data: { id } });
+      const productCount = await tx.product.count({ where: { categoryId: id } });
+      const couponCount = await tx.coupon.count({ where: { categoryId: id } });
+      if (productCount > 0 || couponCount > 0) {
+        throw new RangeError("该分类仍有关联商品或优惠券，请先处理关联记录。");
+      }
+      await tx.category.delete({ where: { id } });
     });
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof RangeError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     return NextResponse.json({ error: "Failed to delete category" }, { status: 500 });
   }
 }
