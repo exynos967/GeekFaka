@@ -40,6 +40,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 });
     }
 
+    if (!product.isActive) {
+      return NextResponse.json({ error: "商品已下架，无法创建新订单" }, { status: 400 });
+    }
+
     if (product._count.licenses < orderQuantity) {
       log.warn({ productId, requested: orderQuantity, available: product._count.licenses }, "Insufficient stock");
       return NextResponse.json({ error: "Insufficient stock" }, { status: 400 });
