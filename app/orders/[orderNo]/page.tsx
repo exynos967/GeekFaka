@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
@@ -174,35 +174,77 @@ export default function OrderPage({ params }: { params: { orderNo: string } }) {
   const [checking, setChecking] = useState(false)
   const [contact, setContact] = useState("")
   const [error, setError] = useState("")
+  const requestVersion = useRef(0)
+  const requestController = useRef<AbortController | null>(null)
+  const orderStatus = order?.status
+  const orderCreatedAt = order?.createdAt
 
-  const fetchOrder = useCallback(async () => {
-    setLoading(true)
-    setOrder(null)
+  const fetchOrder = useCallback(async (quiet = false) => {
+    const version = ++requestVersion.current
+    requestController.current?.abort()
+    const controller = new AbortController()
+    requestController.current = controller
+    if (!quiet) {
+      setLoading(true)
+      setOrder(null)
+    }
     setError("")
     try {
       const savedContact = sessionStorage.getItem(`geekfaka:order-contact:${orderNo}`)?.trim()
-      if (!savedContact) return
+      if (!savedContact) {
+        setOrder(null)
+        return
+      }
       setContact(savedContact)
       const res = await fetch(`/api/orders/${orderNo}`, {
-        headers: { "X-Order-Contact": savedContact }
+        headers: { "X-Order-Contact": savedContact },
+        signal: controller.signal
       })
+      if (version !== requestVersion.current) return
       if (res.status === 404) {
         sessionStorage.removeItem(`geekfaka:order-contact:${orderNo}`)
+        setOrder(null)
         setError("订单号或下单联系方式不匹配，请重新输入。")
         return
       }
       if (res.ok) {
         const data = await res.json()
+        if (version !== requestVersion.current) return
         setOrder(data)
+        return data.status as string
       } else {
         setError("暂时无法读取订单，请稍后重试。")
       }
-    } catch {
+    } catch (error) {
+      if (controller.signal.aborted || version !== requestVersion.current) return
       setError("读取失败，请确认网络连接及浏览器会话存储可用后重试。")
     } finally {
-      setLoading(false)
+      if (version === requestVersion.current) setLoading(false)
     }
   }, [orderNo])
+
+  useEffect(() => () => {
+    requestVersion.current++
+    requestController.current?.abort()
+  }, [orderNo])
+
+  useEffect(() => {
+    if (!orderCreatedAt || orderStatus !== "PENDING") return
+    let stopped = false
+    let timer: ReturnType<typeof setTimeout>
+    const poll = async () => {
+      if (stopped) return
+      if (document.visibilityState !== "hidden") await fetchOrder(true)
+      if (!stopped && (new Date(orderCreatedAt).getTime() + 30 * 60 * 1000 > Date.now())) {
+        timer = setTimeout(poll, 10000)
+      }
+    }
+    timer = setTimeout(poll, 5000)
+    return () => {
+      stopped = true
+      clearTimeout(timer)
+    }
+  }, [orderStatus, orderCreatedAt, fetchOrder])
 
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -243,15 +285,10 @@ export default function OrderPage({ params }: { params: { orderNo: string } }) {
   const handleCheckPayment = async () => {
     setChecking(true)
     try {
-      const res = await fetch(`/api/orders/${orderNo}/check`, { method: "POST" })
-      const data = await res.json()
-      if (data.status === "PAID") {
-        fetchOrder() // Refresh to show keys
-      } else {
-        alert("未查询到支付成功记录，请稍后再试或联系客服。")
+      const status = await fetchOrder(true)
+      if (status === "PENDING" || status === "EXPIRED") {
+        setError("暂未收到支付成功通知，请稍后刷新或联系客服。")
       }
-    } catch (e) {
-      console.error(e)
     } finally {
       setChecking(false)
     }
@@ -306,6 +343,7 @@ export default function OrderPage({ params }: { params: { orderNo: string } }) {
     <div className="min-h-screen bg-background dark text-foreground pb-20">
       <Navbar />
       <div className="container mx-auto max-w-3xl py-10 px-4">
+        {error && <p role="alert" className="mb-4 text-sm text-destructive">{error}</p>}
         {syncing && (
           <div className="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-lg flex items-center justify-center gap-2 text-primary animate-pulse text-sm">
             <Loader2 className="h-4 w-4 animate-spin" />
