@@ -1,5 +1,48 @@
 import type { Prisma } from "@prisma/client";
 
+export class OrderStateConflictError extends Error {
+  constructor(message = "订单状态已变化，请刷新后重试") {
+    super(message);
+    this.name = "OrderStateConflictError";
+  }
+}
+
+export async function fulfillOrder(
+  tx: Prisma.TransactionClient,
+  orderId: string,
+  paymentMethod: string,
+  expectedAmount?: string
+) {
+  const order = await tx.order.findUnique({ where: { id: orderId } });
+  if (!order) throw new OrderStateConflictError();
+  if (expectedAmount !== undefined && order.totalAmount.toFixed(2) !== expectedAmount) {
+    throw new Error("Amount mismatch");
+  }
+  if (order.status === "PAID") return false;
+  if (order.status !== "PENDING" && order.status !== "EXPIRED") {
+    throw new OrderStateConflictError();
+  }
+
+  // Claim the order before touching stock; any later failure rolls this back.
+  const claimed = await tx.order.updateMany({
+    where: { id: order.id, status: { in: ["PENDING", "EXPIRED"] } },
+    data: { status: "PAID", paymentMethod, paidAt: new Date() }
+  });
+  if (claimed.count !== 1) throw new OrderStateConflictError();
+  await claimAvailableLicenses(tx, {
+    productId: order.productId,
+    orderId: order.id,
+    quantity: order.quantity
+  });
+  if (order.couponId) {
+    await tx.coupon.update({
+      where: { id: order.couponId },
+      data: { isUsed: true, usedAt: new Date() }
+    });
+  }
+  return true;
+}
+
 export class InsufficientStockError extends Error {
   constructor() {
     super("Insufficient stock");

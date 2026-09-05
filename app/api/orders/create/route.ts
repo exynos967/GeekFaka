@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { calculatePrice } from "@/lib/pricing";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { claimAvailableLicenses } from "@/lib/fulfillment";
+import { fulfillOrder } from "@/lib/fulfillment";
 import { getPaymentAdapter } from "@/lib/payments/registry";
 import { logger } from "@/lib/logger";
 import { sendOrderEmail } from "@/lib/mail";
@@ -109,17 +109,12 @@ export async function POST(req: Request) {
             quantity: orderQuantity,
             totalAmount,
             paymentMethod: validCouponId ? "coupon" : "free",
-            status: "PAID",
-            paidAt: new Date(),
+            status: "PENDING",
             couponId: validCouponId
           }
         });
 
-        await claimAvailableLicenses(tx, {
-          productId,
-          orderId: order.id,
-          quantity: orderQuantity
-        });
+        await fulfillOrder(tx, order.id, validCouponId ? "coupon" : "free");
       });
 
       log.info({ orderNo, totalAmount }, "Coupon/free order fulfilled");

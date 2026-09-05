@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { claimAvailableLicenses } from "@/lib/fulfillment";
+import { fulfillOrder, InsufficientStockError, OrderStateConflictError } from "@/lib/fulfillment";
 import { isAuthenticated } from "@/lib/auth";
 import { sendOrderEmail } from "@/lib/mail";
 
@@ -22,28 +22,10 @@ export async function PATCH(
     if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
     if (action === "MARK_PAID") {
-       if (order.status === "PAID") return NextResponse.json({ error: "Already paid" }, { status: 400 });
-
-       // Transactional manual fulfillment
        await prisma.$transaction(async (tx) => {
-         await claimAvailableLicenses(tx, {
-           productId: order.productId,
-           orderId: order.id,
-           quantity: order.quantity
-         });
-
-         // Update Order
-         await tx.order.update({
-           where: { id },
-           data: { 
-             status: "PAID", 
-             paidAt: new Date(),
-             paymentMethod: "manual"
-           }
-         });
+         await fulfillOrder(tx, order.id, "manual");
        });
 
-       // Trigger email notification in background
        sendOrderEmail(order.orderNo).catch(console.error);
 
        return NextResponse.json({ success: true });
@@ -52,6 +34,9 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
 
   } catch (error: any) {
+    if (error instanceof OrderStateConflictError || error instanceof InsufficientStockError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     return NextResponse.json({ error: error.message || "Operation failed" }, { status: 500 });
   }
 }

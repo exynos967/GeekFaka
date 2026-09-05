@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { claimAvailableLicenses } from "@/lib/fulfillment";
+import { fulfillOrder } from "@/lib/fulfillment";
 import { getPaymentAdapter } from "@/lib/payments/registry";
 import { logger } from "@/lib/logger";
 import { sendOrderEmail } from "@/lib/mail";
@@ -34,10 +34,10 @@ async function processNotification(data: any, req?: Request) {
     log.info("Signature verified");
 
     if (callbackData.status === "PAID") {
-      const result = await prisma.$transaction(async (tx): Promise<"FULFILLED" | "ALREADY_PAID"> => {
+      await prisma.$transaction(async (tx) => {
         const order = await tx.order.findUnique({
           where: { orderNo: callbackData.orderNo },
-          include: { product: true }
+          select: { id: true }
         });
 
         if (!order) {
@@ -45,38 +45,12 @@ async function processNotification(data: any, req?: Request) {
             throw new Error("Order not found");
         }
 
-        if (order.totalAmount.toFixed(2) !== callbackData.amount) {
-          throw new Error("Amount mismatch");
-        }
-        
-        if (order.status === "PAID") {
-            log.info("Order already paid, skipping idempotency check");
-            return "ALREADY_PAID";
-        }
-
-        await claimAvailableLicenses(tx, {
-          productId: order.productId,
-          orderId: order.id,
-          quantity: order.quantity
-        });
-
-        await tx.order.update({
-          where: { id: order.id },
-          data: { 
-            status: "PAID",
-            paymentMethod: "epay",
-            paidAt: new Date()
-          }
-        });
-        log.info("Order successfully fulfilled");
-        return "FULFILLED";
+        await fulfillOrder(tx, order.id, "epay", callbackData.amount);
       });
 
-      if (result === "FULFILLED") {
-        sendOrderEmail(callbackData.orderNo).catch(e =>
-          log.error({ errorType: e instanceof Error ? e.name : "UnknownError" }, "Email background task failed")
-        );
-      }
+      sendOrderEmail(callbackData.orderNo).catch(error =>
+        log.error({ errorType: error instanceof Error ? error.name : "UnknownError" }, "Email background task failed")
+      );
 
       return new NextResponse("success");
     }
