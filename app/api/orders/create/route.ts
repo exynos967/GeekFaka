@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { calculatePrice } from "@/lib/pricing";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { claimAvailableLicenses } from "@/lib/fulfillment";
@@ -82,7 +83,11 @@ export async function POST(req: Request) {
     }
 
     // 3. Calculate Amount
-    const totalAmount = Math.max(0, Math.round(((price * orderQuantity) - discountAmount) * 100) / 100);
+    const feeSetting = paymentMethod === "epay"
+      ? await prisma.systemSetting.findUnique({ where: { key: "epay_fee" } })
+      : null;
+    const { totalAmount } = calculatePrice(price, orderQuantity,
+      { discountType: "FIXED", discountValue: discountAmount }, Number(feeSetting?.value || 0));
 
     // 4. Create Order
     const orderNo = `HT-${randomUUID()}`;

@@ -12,6 +12,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { ShoppingCart, Loader2, Zap, Package, CreditCard, Wallet, Ticket, Check, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import ReactMarkdown from "react-markdown"
+import { calculatePrice } from "@/lib/pricing"
 
 interface Product {
   id: string
@@ -61,22 +62,16 @@ export function StoreFront({ categories }: { categories: Category[] }) {
 
   // Derived State
   const selectedChannel = channels.find(c => c.id === paymentMethod)
-  const subtotal = selectedProduct ? Number(selectedProduct.price) * quantity : 0
-  
-  // Calculate discount
-  let discount = 0
-  if (appliedCoupon) {
-    if (appliedCoupon.discountType === "PERCENTAGE") {
-      discount = subtotal * (appliedCoupon.discountValue / 100)
-    } else {
-      discount = appliedCoupon.discountValue
+  let priceError = ""
+  let quote = { discount: 0, feeAmount: 0, totalAmount: 0 }
+  if (selectedProduct) {
+    try {
+      quote = calculatePrice(Number(selectedProduct.price), quantity, appliedCoupon, selectedChannel?.fee || 0)
+    } catch {
+      priceError = "请检查购买数量，或联系商家确认价格和手续费配置"
     }
   }
-
-  const productTotal = Math.max(0, Math.round((subtotal - discount) * 100) / 100)
-  const feePercent = selectedChannel?.fee || 0
-  const feeAmount = Math.round(productTotal * (feePercent / 100) * 100) / 100
-  const finalTotal = Math.round((productTotal + feeAmount) * 100) / 100
+  const { discount, feeAmount, totalAmount: finalTotal } = quote
 
   useEffect(() => {
     fetch("/api/config/payments")
@@ -140,7 +135,7 @@ export function StoreFront({ categories }: { categories: Category[] }) {
   }
 
   const handlePurchase = async () => {
-    if (!selectedProduct) return
+    if (!selectedProduct || priceError) return
     
     if (!validateEmail(email)) {
       setEmailError("请输入有效的邮箱地址，用于接收订单通知")
@@ -434,7 +429,8 @@ export function StoreFront({ categories }: { categories: Category[] }) {
                   </div>
                 </div>
                 
-                <Button size="lg" className="w-full font-bold text-lg h-12 shadow-lg shadow-primary/20" onClick={handlePurchase} disabled={loading}>
+                {priceError && <p role="alert" className="text-sm text-destructive">{priceError}</p>}
+                <Button size="lg" className="w-full font-bold text-lg h-12 shadow-lg shadow-primary/20" onClick={handlePurchase} disabled={loading || !!priceError}>
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   {loading ? "正在处理..." : finalTotal <= 0 ? "确认下单" : "立即支付"}
                 </Button>
