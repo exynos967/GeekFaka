@@ -46,7 +46,6 @@ export default function OrdersPage() {
   const [totalCount, setTotalCount] = useState(0)
 
   useEffect(() => {
-    fetchOrders(1)
     fetchProducts()
   }, [])
 
