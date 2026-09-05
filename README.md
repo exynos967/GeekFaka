@@ -42,7 +42,7 @@
    ```
 
 2. **配置参数**：
-   修改 `docker-compose.yml` 中的环境变量，特别是 `DATABASE_URL`、`ADMIN_PASSWORD` 和 `NEXT_PUBLIC_URL`。
+   修改 `docker-compose.yml` 中的数据库和站点地址，并在同目录的 `.env` 中配置 `ADMIN_PASSWORD`、`JWT_SECRET`。JWT_SECRET 必须是独立随机值，至少 32 字节；不再使用管理员密码或默认值作为回退。可选的 `COUPON_API_KEY` 也需使用至少 32 字节的独立随机值，留空则禁用批量优惠码 API。
 
 3. **启动系统**：
    ```bash
@@ -63,10 +63,11 @@
    复制 `.env.example` 为 `.env`：
    ```env
    DATABASE_URL="file:./dev.db"
-   ADMIN_PASSWORD="admin"
+   ADMIN_PASSWORD="请自行设置管理员密码"
    NEXT_PUBLIC_URL="http://localhost:3000"
-   JWT_SECRET="随机字符串"
+   JWT_SECRET=""
    ```
+   使用 `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"` 生成随机密钥并填入 JWT_SECRET。需要批量优惠码 API 时，重新生成一个独立值填入 COUPON_API_KEY。
 
 3. **初始化与运行**：
    ```bash

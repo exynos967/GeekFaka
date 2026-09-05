@@ -2,15 +2,16 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { SignJWT, jwtVerify } from "jose";
+import { getConfiguredSecret, secretsEqual } from "@/lib/secrets";
 
 const COOKIE_NAME = process.env.COOKIE_NAME || "geekfaka_admin_session";
 const SESSION_DURATION = 60 * 60 * 24 * 30; // 30 Days
 const log = logger.child({ module: 'Auth' });
 
-// Get secret from env or fallback
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || process.env.ADMIN_PASSWORD || "default-secret-please-change"
-);
+function getSigningKey() {
+  const secret = getConfiguredSecret("JWT_SECRET");
+  return secret ? new TextEncoder().encode(secret) : null;
+}
 
 function getCookieOptions() {
   const isSecure = process.env.ENABLE_SECURE_COOKIE === "true";
@@ -25,13 +26,18 @@ function getCookieOptions() {
 
 export async function isAuthenticated() {
   try {
+    const signingKey = getSigningKey();
+    if (!signingKey) return false;
     const cookieStore = cookies();
     const session = cookieStore.get(COOKIE_NAME);
     
     if (!session?.value) return false;
 
     // Verify JWT with clock tolerance to handle slight server time drifts
-    const { payload } = await jwtVerify(session.value, JWT_SECRET, {
+    const { payload } = await jwtVerify(session.value, signingKey, {
+      algorithms: ["HS256"],
+      requiredClaims: ["iat", "exp"],
+      maxTokenAge: SESSION_DURATION,
       clockTolerance: "1m"
     });
     
@@ -50,6 +56,11 @@ export async function isAuthenticated() {
 }
 
 export async function login(password: string) {
+  const signingKey = getSigningKey();
+  if (!signingKey) {
+    log.error("Admin login disabled: configure a random JWT_SECRET of at least 32 bytes");
+    return false;
+  }
   const dbSetting = await prisma.systemSetting.findUnique({
     where: { key: "admin_password" }
   });
@@ -61,13 +72,12 @@ export async function login(password: string) {
     return false;
   }
 
-  if (password === validPassword) {
-    // Generate JWT - We remove internal expiration and rely on Cookie maxAge for session management.
-    // This is more robust against time synchronization issues.
+  if (secretsEqual(password, validPassword)) {
     const token = await new SignJWT({ role: "admin" })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
-      .sign(JWT_SECRET);
+      .setExpirationTime(Math.floor(Date.now() / 1000) + SESSION_DURATION)
+      .sign(signingKey);
 
     const cookieStore = cookies();
     cookieStore.set(COOKIE_NAME, token, getCookieOptions());

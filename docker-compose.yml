@@ -10,10 +10,10 @@ services:
     environment:
       - DATABASE_URL=mysql://geekfaka_user:your_password_here@mysql:3306/geekfaka
       - NEXT_PUBLIC_URL=http://localhost:3000
-      - ADMIN_PASSWORD=admin
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?Set ADMIN_PASSWORD}
       - COOKIE_NAME=geekfaka_session
-      - JWT_SECRET=change_me_to_a_random_string # JWT 签名密钥
-      - COUPON_API_KEY=geekfaka_default_secret_key # 批量创建优惠码的 API KEY
+      - JWT_SECRET=${JWT_SECRET:?Set a random JWT_SECRET of at least 32 bytes}
+      - COUPON_API_KEY=${COUPON_API_KEY:-} # 留空则禁用批量优惠码 API
     depends_on:
       - mysql
     volumes:

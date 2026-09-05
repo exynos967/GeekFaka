@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
-const DEFAULT_API_KEY = "geekfaka_default_secret_key";
+import { getConfiguredSecret, secretsEqual } from "@/lib/secrets";
 
 export async function POST(req: Request) {
   const apiKey = req.headers.get("X-API-KEY");
-  const validApiKey = process.env.COUPON_API_KEY || DEFAULT_API_KEY;
+  const validApiKey = getConfiguredSecret("COUPON_API_KEY");
+  if (!validApiKey) {
+    return NextResponse.json({ error: "Coupon API is not configured" }, { status: 503 });
+  }
 
-  if (apiKey !== validApiKey) {
+  if (!apiKey || !secretsEqual(apiKey, validApiKey)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
