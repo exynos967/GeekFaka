@@ -58,12 +58,16 @@ export default function CouponsPage() {
     categoryId: ""
   })
   const [saving, setSaving] = useState(false)
+  const [categoryError, setCategoryError] = useState("")
 
   useEffect(() => {
     fetchCoupons(page)
+  }, [page])
+
+  useEffect(() => {
     fetchProducts()
     fetchCategories()
-  }, [page])
+  }, [])
 
   useEffect(() => {
     if (editingCoupon) {
@@ -90,7 +94,7 @@ export default function CouponsPage() {
       const res = await fetch(`/api/admin/coupons?page=${currentPage}&limit=${PAGE_SIZE}`)
       const data = await res.json()
       setCoupons(data.items || [])
-      setTotalPages(Math.ceil((data.total || 0) / PAGE_SIZE))
+      setTotalPages(Math.max(1, Math.ceil((data.total || 0) / PAGE_SIZE)))
     } catch (e) {
       console.error(e)
     } finally {
@@ -115,12 +119,25 @@ export default function CouponsPage() {
   }
 
   const fetchCategories = async () => {
+    setCategoryError("")
     try {
-      const res = await fetch("/api/admin/categories")
-      const data = await res.json()
-      setCategories(data)
+      const allCategories: Category[] = []
+      let currentPage = 1
+      while (true) {
+        const res = await fetch(`/api/admin/categories?page=${currentPage}&limit=100`)
+        if (!res.ok) throw new Error("Failed to load categories")
+        const data: { items: Category[], total: number } = await res.json()
+        if (!Array.isArray(data.items) || !Number.isFinite(data.total)) {
+          throw new Error("Invalid categories response")
+        }
+        allCategories.push(...data.items)
+        if (data.items.length === 0 || allCategories.length >= data.total) break
+        currentPage++
+      }
+      setCategories(Array.from(new Map(allCategories.map(category => [category.id, category])).values()))
     } catch (e) {
       console.error(e)
+      setCategoryError("分类读取失败，请重试")
     }
   }
 
@@ -289,7 +306,7 @@ export default function CouponsPage() {
               variant="outline"
               size="sm"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
+              disabled={page >= totalPages}
             >
               下一页
               <ChevronRight className="h-4 w-4" />
@@ -388,6 +405,12 @@ export default function CouponsPage() {
             {formData.scopeType === "CATEGORY" && (
               <div className="grid gap-2">
                 <Label>选择分类</Label>
+                {categoryError && (
+                  <div role="alert" className="text-sm text-destructive">
+                    {categoryError}
+                    <Button variant="link" size="sm" onClick={fetchCategories}>重试</Button>
+                  </div>
+                )}
                 <Select 
                   value={formData.categoryId} 
                   onValueChange={(val) => setFormData({ ...formData, categoryId: val })}
