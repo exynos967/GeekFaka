@@ -31,25 +31,32 @@ function formatLicense(code: string, index: number, format: string) {
   return `${prefix}\n卡密内容: ${code}`;
 }
 
-export async function sendOrderEmail(orderNo: string) {
+export type OrderEmailResult = {
+  status: "sent" | "already_sent" | "skipped" | "failed";
+  message?: string;
+};
+
+export async function sendOrderEmail(orderNo: string): Promise<OrderEmailResult> {
   try {
     // 1. Fetch Order details with product and licenses first to check status
     const order = await prisma.order.findUnique({
       where: { orderNo },
       include: {
         product: true,
-        licenses: true
+        licenses: { orderBy: { id: "asc" } }
       }
     });
 
     if (!order || !order.email || order.status !== 'PAID' || order.emailSent) {
       log.info({ orderNo, reason: !order ? "NotFound" : (order.emailSent ? "AlreadySent" : "NotPaid") }, "Skipping email sending");
-      return;
+      return order?.emailSent
+        ? { status: "already_sent" }
+        : { status: "skipped", message: "订单未支付或没有可用的收件邮箱" };
     }
 
     if (order.licenses.length === 0) {
       log.warn({ orderNo }, "Skipping email sending: No licenses found attached to order");
-      return;
+      return { status: "skipped", message: "订单尚未关联卡密" };
     }
 
     // 2. Fetch Resend configuration
@@ -65,13 +72,13 @@ export async function sendOrderEmail(orderNo: string) {
     }, {} as Record<string, string>);
 
     if (config.resend_enabled !== 'true' || !config.resend_api_key) {
-      return;
+      return { status: "skipped", message: "请先启用邮件通知并配置发件信息" };
     }
 
     const resend = new Resend(config.resend_api_key);
     const siteTitle = config.site_title || 'GeekFaka';
 
-    const deliveryFormat = (order.product as any).deliveryFormat || "SINGLE";
+    const deliveryFormat = order.product.deliveryFormat || "SINGLE";
     const licenseList = order.licenses
       .map((l, i) => formatLicense(l.code, i, deliveryFormat))
       .join('\n');
@@ -81,10 +88,11 @@ export async function sendOrderEmail(orderNo: string) {
       to: order.email,
       subject: `[${siteTitle}] 您的订单已发货 - ${order.product.name}`,
       text: `尊敬的客户：\n\n您的订单 ${orderNo} 已支付成功，感谢您的购买！\n\n商品名称：${order.product.name}\n购买数量：${order.quantity}\n支付金额：¥${Number(order.totalAmount).toFixed(2)}\n\n您的卡密信息如下：\n--------------------------${licenseList}\n--------------------------\n\n您可以随时访问以下链接查询订单详情：\n${process.env.NEXT_PUBLIC_URL}/orders/${orderNo}\n\n如有任何问题，请联系在线客服。`,
-    });
+    }, { idempotencyKey: `order-delivery/${order.id}` });
 
     if (error) {
       log.error({ error, orderNo }, "Failed to send email via Resend");
+      return { status: "failed", message: "邮件发送失败，请检查邮件配置后重试" };
     } else {
       log.info({ data, orderNo }, "Order email sent successfully");
       // Mark as sent to prevent duplicates
@@ -92,9 +100,11 @@ export async function sendOrderEmail(orderNo: string) {
         where: { id: order.id },
         data: { emailSent: true }
       });
+      return { status: "sent" };
     }
 
   } catch (err) {
     log.error({ err, orderNo }, "Unexpected error in sendOrderEmail");
+    return { status: "failed", message: "邮件暂未发送，请稍后重试" };
   }
 }

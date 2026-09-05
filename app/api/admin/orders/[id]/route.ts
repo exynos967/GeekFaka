@@ -21,14 +21,25 @@ export async function PATCH(
     });
     if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
+    if (action === "RETRY_EMAIL") {
+      if (order.status !== "PAID") {
+        return NextResponse.json({ error: "仅已支付订单可补发邮件" }, { status: 400 });
+      }
+      const email = await sendOrderEmail(order.orderNo);
+      if (email.status === "failed" || email.status === "skipped") {
+        return NextResponse.json({ error: email.message }, { status: 502 });
+      }
+      return NextResponse.json({ success: true, emailStatus: email.status });
+    }
+
     if (action === "MARK_PAID") {
        await prisma.$transaction(async (tx) => {
          await fulfillOrder(tx, order.id, "manual");
        });
 
-       sendOrderEmail(order.orderNo).catch(console.error);
+       const email = await sendOrderEmail(order.orderNo);
 
-       return NextResponse.json({ success: true });
+       return NextResponse.json({ success: true, emailStatus: email.status, emailMessage: email.message });
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });

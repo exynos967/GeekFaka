@@ -48,9 +48,8 @@ async function processNotification(data: any, req?: Request) {
         await fulfillOrder(tx, order.id, "epay", callbackData.amount);
       });
 
-      sendOrderEmail(callbackData.orderNo).catch(error =>
-        log.error({ errorType: error instanceof Error ? error.name : "UnknownError" }, "Email background task failed")
-      );
+      // Email failures are retriable independently of payment acknowledgement.
+      await sendOrderEmail(callbackData.orderNo);
 
       return new NextResponse("success");
     }

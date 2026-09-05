@@ -13,6 +13,7 @@ interface Order {
   id: string
   orderNo: string
   email: string
+  emailSent: boolean
   totalAmount: string
   status: string
   quantity: number
@@ -130,12 +131,34 @@ export default function OrdersPage() {
       const data = await res.json()
       if (res.ok) {
         fetchOrders(currentPage)
+        if (data.emailMessage) alert(`补单成功，${data.emailMessage}。可通过“补发邮件”重试。`)
       } else {
         alert(data.error)
       }
     } catch (error) {
       console.error(error)
       alert("操作失败")
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleRetryEmail = async (orderId: string) => {
+    setActionLoading(orderId)
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "RETRY_EMAIL" })
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        alert(data.error || "邮件补发失败")
+        return
+      }
+      await fetchOrders(currentPage)
+    } catch {
+      alert("邮件补发请求失败，请稍后重试")
     } finally {
       setActionLoading(null)
     }
@@ -253,6 +276,11 @@ export default function OrdersPage() {
                     </TableCell>
                     <TableCell>
                       {getStatusBadge(order.status)}
+                      {order.status === "PAID" && (
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {order.emailSent ? "邮件已发送" : "邮件未发送"}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground uppercase">
                       {order.paymentMethod || "-"}
@@ -273,7 +301,13 @@ export default function OrdersPage() {
                            <ExternalLink className="h-4 w-4" />
                          </Button>
 
-                         {order.status === "PENDING" && (
+                         {order.status === "PAID" && !order.emailSent && (
+                           <Button variant="outline" size="sm" disabled={actionLoading === order.id}
+                             onClick={() => handleRetryEmail(order.id)}>
+                             {actionLoading === order.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "补发邮件"}
+                           </Button>
+                         )}
+                         {(order.status === "PENDING" || order.status === "EXPIRED") && (
                            <Button 
                              variant="outline" 
                              size="sm" 

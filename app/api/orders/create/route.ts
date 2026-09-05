@@ -173,7 +173,7 @@ export async function POST(req: Request) {
     });
 
     if (totalAmount === 0) {
-      sendOrderEmail(orderNo).catch(error => log.error({ err: error, orderNo }, "Email background task failed"));
+      await sendOrderEmail(orderNo);
       return NextResponse.json({ success: true, orderNo, payUrl: `/orders/${orderNo}` });
     }
     
